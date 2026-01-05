@@ -10,9 +10,8 @@ export interface IConfig {
   layout?: "horizontal" | "vertical";
   image_position?: "start" | "end";
   image?: string;
-  filter_overdue?: boolean;
+  upcoming_days?: number;
   title?: string;
-  debug?: boolean;
   show_next_date?: boolean;
 }
 
@@ -29,6 +28,7 @@ export interface IEntity {
   id: string;
   frequency_days: number;
   icon?: string;
+  icon_color?: string;
   show_next_date?: boolean;
 }
 

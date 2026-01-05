@@ -19,9 +19,8 @@ export class DatetimeCardEditor extends LitElement {
   @state() private image = '';
   @state() private key = 1;
   @state() private imagePosition: "start" | "end" = "start";
-  @state() private filterOverdue = false;
+  @state() private upcomingDays = 0;
   @state() private title = '';
-  @state() private debug = false;
   @state() private showNextDate = true;
 
   private hasInitialized = false;
@@ -62,6 +61,7 @@ export class DatetimeCardEditor extends LitElement {
   get iconAutocompleteItems(): IAutocompleteItem[] {
     // Common MDI icons for maintenance tasks
     const commonIcons = [
+      { value: 'mdi:coffee', name: 'Coffee' },
       { value: 'mdi:sprout', name: 'Sprout (Plant)' },
       { value: 'mdi:watering-can', name: 'Watering Can' },
       { value: 'mdi:flower', name: 'Flower' },
@@ -114,9 +114,8 @@ export class DatetimeCardEditor extends LitElement {
     ];
     this.image = this.config.image || "";
     this.imagePosition = this.config.image_position || "start";
-    this.filterOverdue = this.config.filter_overdue || false;
+    this.upcomingDays = this.config.upcoming_days || 0;
     this.title = this.config.title || "";
-    this.debug = this.config.debug || false;
     this.showNextDate = this.config.show_next_date ?? true;
   }
 
@@ -137,9 +136,8 @@ export class DatetimeCardEditor extends LitElement {
       layout: this.layout,
       image_position: this.imagePosition,
       image: this.image,
-      filter_overdue: this.filterOverdue,
+      upcoming_days: this.upcomingDays,
       title: this.title,
-      debug: this.debug,
       show_next_date: this.showNextDate,
       type,
     };
@@ -159,22 +157,39 @@ export class DatetimeCardEditor extends LitElement {
     return { primaryText, secondaryText, value: entity_id };
   }
 
-  private toDraggableEntity({ friendly_name, id, frequency_days, icon }: IEntity): DraggableEntity {
+  private toDraggableEntity({ friendly_name, id, frequency_days, icon, icon_color }: IEntity): DraggableEntity {
+    // Convert total days to years, months, days
+    const totalDays = frequency_days > 0 ? frequency_days : 0;
+    const years = Math.floor(totalDays / 365);
+    const remainingAfterYears = totalDays % 365;
+    const months = Math.floor(remainingAfterYears / 30);
+    const days = remainingAfterYears % 30;
+
     return {
       friendly_name,
       id,
       key: this.newKey(),
-      frequency_days: frequency_days > 0 ? frequency_days.toString() : "",
+      frequency_years: years > 0 ? years.toString() : "",
+      frequency_months: months > 0 ? months.toString() : "",
+      frequency_days: days > 0 ? days.toString() : "",
       icon: icon || "",
+      icon_color: icon_color || "",
     };
   }
 
-  private toEntity({ friendly_name, id, frequency_days, icon }: DraggableEntity): IEntity {
+  private toEntity({ friendly_name, id, frequency_years, frequency_months, frequency_days, icon, icon_color }: DraggableEntity): IEntity {
+    // Convert years, months, days to total days
+    const years = parseInt(frequency_years) || 0;
+    const months = parseInt(frequency_months) || 0;
+    const days = parseInt(frequency_days) || 0;
+    const totalDays = (years * 365) + (months * 30) + days;
+
     return {
       friendly_name,
       id,
-      frequency_days: parseInt(frequency_days) || 7,
+      frequency_days: totalDays > 0 ? totalDays : 7,
       icon: icon || undefined,
+      icon_color: icon_color || undefined,
     };
   }
 
@@ -208,6 +223,14 @@ export class DatetimeCardEditor extends LitElement {
   private updateIcon(icon: string, entity: DraggableEntity): void {
     this.draggableEntities = this.draggableEntities.map((e) =>
       e === entity ? { ...e, icon } : e,
+    );
+    this.dispatchConfigChanged();
+  }
+
+  private updateIconColor(event: InputEvent, entity: DraggableEntity): void {
+    const icon_color = event.target.value;
+    this.draggableEntities = this.draggableEntities.map((e) =>
+      e === entity ? { ...e, icon_color } : e,
     );
     this.dispatchConfigChanged();
   }
@@ -249,10 +272,36 @@ export class DatetimeCardEditor extends LitElement {
     this.dispatchConfigChanged();
   }
 
-  private updateFrequency(event: InputEvent, entity: DraggableEntity): void {
+  private updateFrequencyYears(event: InputEvent, entity: DraggableEntity): void {
     const value = Number(event.target.value);
 
-    if (!Number.isInteger(value) || value < 1) {
+    if (!Number.isInteger(value) || value < 0) {
+      event.target.value = entity.frequency_years;
+      return;
+    }
+
+    event.target.value = value.toString();
+    entity.frequency_years = value.toString();
+    this.dispatchConfigChanged();
+  }
+
+  private updateFrequencyMonths(event: InputEvent, entity: DraggableEntity): void {
+    const value = Number(event.target.value);
+
+    if (!Number.isInteger(value) || value < 0) {
+      event.target.value = entity.frequency_months;
+      return;
+    }
+
+    event.target.value = value.toString();
+    entity.frequency_months = value.toString();
+    this.dispatchConfigChanged();
+  }
+
+  private updateFrequencyDays(event: InputEvent, entity: DraggableEntity): void {
+    const value = Number(event.target.value);
+
+    if (!Number.isInteger(value) || value < 0) {
       event.target.value = entity.frequency_days;
       return;
     }
@@ -262,18 +311,21 @@ export class DatetimeCardEditor extends LitElement {
     this.dispatchConfigChanged();
   }
 
-  private updateFilterOverdue(event: InputEvent): void {
-    this.filterOverdue = event.target.checked;
+  private updateUpcomingDaysEnabled(event: InputEvent): void {
+    this.upcomingDays = event.target.checked ? 2 : 0;
     this.dispatchConfigChanged();
+  }
+
+  private updateUpcomingDaysValue(event: InputEvent): void {
+    const value = Number(event.target.value);
+    if (Number.isInteger(value) && value >= 1) {
+      this.upcomingDays = value;
+      this.dispatchConfigChanged();
+    }
   }
 
   private updateTitle(event: InputEvent): void {
     this.title = event.target.value;
-    this.dispatchConfigChanged();
-  }
-
-  private updateDebug(event: InputEvent): void {
-    this.debug = event.target.checked;
     this.dispatchConfigChanged();
   }
 
@@ -361,23 +413,26 @@ export class DatetimeCardEditor extends LitElement {
 
         <div class="option-row">
           <ha-switch
-            id="filter-overdue-switch"
-            aria-label="Filter overdue only"
-            ?checked=${this.filterOverdue}
-            @change=${this.updateFilterOverdue}>
+            id="upcoming-tasks-switch"
+            aria-label="Show upcoming tasks"
+            ?checked=${this.upcomingDays > 0}
+            @change=${this.updateUpcomingDaysEnabled}>
           </ha-switch>
-          <label for="filter-overdue-switch">Filter overdue only</label>
+          <label for="upcoming-tasks-switch">Show upcoming tasks</label>
         </div>
 
-        <div class="option-row">
-          <ha-switch
-            id="debug-switch"
-            aria-label="Show debug information"
-            ?checked=${this.debug}
-            @change=${this.updateDebug}>
-          </ha-switch>
-          <label for="debug-switch">Show debug information</label>
-        </div>
+        ${this.upcomingDays > 0 ? html`
+          <div class="option-row indented">
+            <ha-textfield
+              data-testid="upcoming-days"
+              label="Show tasks due within (days)"
+              type="number"
+              min="1"
+              .value=${this.upcomingDays.toString()}
+              @input=${this.updateUpcomingDaysValue}>
+            </ha-textfield>
+          </div>
+        ` : ''}
 
         <div class="option-row">
           <ha-switch
@@ -398,55 +453,88 @@ export class DatetimeCardEditor extends LitElement {
           (entity) => entity.key,
           (entity, index) => html`
             <div role="listitem" class="entity">
-              ${this.draggableEntities.length > 1 ? html`
-                <div class="handle"></div>
-              ` : html`<div class="handle"></div>`}
+              <div class="entity-header">
+                <div class="entity-title">Entity ${index + 1}</div>
+                ${this.draggableEntities.length > 1 ? html`
+                  <ha-icon-button
+                    class="delete-button"
+                    data-testid="delete-${index}"
+                    role="menuitem"
+                    tabindex="0"
+                    @click=${() => this.deleteDraggableEntity(entity.key)}>
+                    <ha-icon icon="mdi:delete"></ha-icon>
+                  </ha-icon-button>
+                ` : ''}
+              </div>
 
-              <maintenance-tracker-card-autocomplete
-                data-testid="maintenance-tracker-card-autocomplete-${index}"
-                label="Entity"
-                .items=${this.autocompleteItems}
-                .value=${entity.id}
-                .updateId=${(id: string) => this.updateId(id, entity)}>
-              </maintenance-tracker-card-autocomplete>
+              <div class="entity-content">
+                <maintenance-tracker-card-autocomplete
+                  data-testid="maintenance-tracker-card-autocomplete-${index}"
+                  label="Entity"
+                  .items=${this.autocompleteItems}
+                  .value=${entity.id}
+                  .updateId=${(id: string) => this.updateId(id, entity)}>
+                </maintenance-tracker-card-autocomplete>
 
-              <ha-textfield
-                data-testid="frequency-${index}"
-                class="frequency-textfield"
-                label="Frequency (days)"
-                .value=${entity.frequency_days}
-                @input=${(event: Event) => this.updateFrequency(event as InputEvent, entity)}>
-              </ha-textfield>
+                <ha-textfield
+                  data-testid="friendly-name-${index}"
+                  label="Label (optional)"
+                  .value=${entity.friendly_name || ""}
+                  @input=${(event: Event) => this.updateFriendlyName(event as InputEvent, entity)}>
+                </ha-textfield>
 
-              ${this.draggableEntities.length > 1 ? html`
-                <ha-icon-button
-                  class="delete"
-                  data-testid="delete-${index}"
-                  role="menuitem"
-                  tabindex="0"
-                  @click=${() => this.deleteDraggableEntity(entity.key)}>
-                  <ha-icon icon="mdi:delete"></ha-icon>
-                </ha-icon-button>
-              ` : html`<div class="delete"></div>`}
+                <div class="icon-row">
+                  <maintenance-tracker-card-autocomplete
+                    data-testid="icon-autocomplete-${index}"
+                    label="Icon (optional)"
+                    .items=${this.iconAutocompleteItems}
+                    .value=${entity.icon || ""}
+                    .updateId=${(icon: string) => this.updateIcon(icon, entity)}>
+                  </maintenance-tracker-card-autocomplete>
 
-              <div></div>
+                  <ha-textfield
+                    data-testid="icon-color-${index}"
+                    class="icon-color-input"
+                    label="Color (optional)"
+                    placeholder="#FF5722"
+                    .value=${entity.icon_color || ""}
+                    @input=${(event: Event) => this.updateIconColor(event as InputEvent, entity)}>
+                  </ha-textfield>
+                </div>
 
-              <ha-textfield
-                data-testid="friendly-name-${index}"
-                label="Friendly name (optional)"
-                .value=${entity.friendly_name || ""}
-                @input=${(event: Event) => this.updateFriendlyName(event as InputEvent, entity)}>
-              </ha-textfield>
-
-              <maintenance-tracker-card-autocomplete
-                data-testid="icon-autocomplete-${index}"
-                label="Icon (optional)"
-                .items=${this.iconAutocompleteItems}
-                .value=${entity.icon || ""}
-                .updateId=${(icon: string) => this.updateIcon(icon, entity)}>
-              </maintenance-tracker-card-autocomplete>
-
-              <div></div>
+                <div class="frequency-section">
+                  <label class="frequency-label">Frequency</label>
+                  <div class="frequency-inputs">
+                    <ha-textfield
+                      data-testid="frequency-years-${index}"
+                      class="frequency-input"
+                      label="Years"
+                      type="number"
+                      min="0"
+                      .value=${entity.frequency_years}
+                      @input=${(event: Event) => this.updateFrequencyYears(event as InputEvent, entity)}>
+                    </ha-textfield>
+                    <ha-textfield
+                      data-testid="frequency-months-${index}"
+                      class="frequency-input"
+                      label="Months"
+                      type="number"
+                      min="0"
+                      .value=${entity.frequency_months}
+                      @input=${(event: Event) => this.updateFrequencyMonths(event as InputEvent, entity)}>
+                    </ha-textfield>
+                    <ha-textfield
+                      data-testid="frequency-days-${index}"
+                      class="frequency-input"
+                      label="Days"
+                      type="number"
+                      min="0"
+                      .value=${entity.frequency_days}
+                      @input=${(event: Event) => this.updateFrequencyDays(event as InputEvent, entity)}>
+                    </ha-textfield>
+                  </div>
+                </div>
+              </div>
             </div>
           `
         )}
@@ -487,39 +575,92 @@ export class DatetimeCardEditor extends LitElement {
       margin-bottom: 8px;
     }
 
+    .title-section ha-textfield {
+      width: 100%;
+    }
+
     ha-switch {
       margin-left: 30px;
     }
 
-    .delete {
-      padding-right: 8px;
-      width: 32px;
-    }
-
     .entity {
-      display: grid;
-      grid-template-columns: auto 1fr auto auto;
       margin-bottom: 16px;
-      padding: 16px;
+      padding: 0;
       background: var(--card-background-color, #fff);
       border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
       border-radius: var(--ha-card-border-radius, 12px);
-      gap: 8px;
       transition: box-shadow 180ms ease-in-out;
+      overflow: hidden;
     }
 
     .entity:hover {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
 
-    .handle {
-      padding-right: 8px;
-      padding-top: 8px;
-      width: 32px;
+    .entity-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+      border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
     }
 
-    .frequency-textfield {
-      margin: 0 0 0 5px;
+    .entity-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .delete-button {
+      --mdc-icon-button-size: 36px;
+      --mdc-icon-size: 20px;
+    }
+
+    .entity-content {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .icon-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .icon-row maintenance-tracker-card-autocomplete {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .icon-color-input {
+      width: 140px;
+      flex-shrink: 0;
+    }
+
+    .frequency-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .frequency-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .frequency-inputs {
+      display: flex;
+      gap: 8px;
+    }
+
+    .frequency-input {
+      flex: 1;
       max-width: 120px;
     }
 
@@ -552,6 +693,14 @@ export class DatetimeCardEditor extends LitElement {
 
     .option-row label {
       flex: 0 0 140px;
+    }
+
+    .option-row.indented {
+      margin-left: 40px;
+    }
+
+    .option-row.indented ha-textfield {
+      flex: 1;
     }
 
     .select {

@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { IConfig, IEntity, IHass } from './types';
-import { calculateDatetimeState, isExpired } from './datetime/datetime';
+import { calculateDatetimeState } from './datetime/datetime';
 import './datetime/DatetimeRow';
 
 function getDefaultEntities(hass: IHass): IEntity[] {
@@ -57,8 +57,8 @@ export class DatetimeCard extends LitElement {
     return this.config.title || "Maintenance Tracker Card";
   }
 
-  get filterOverdue(): boolean {
-    return this.config.filter_overdue || false;
+  get upcomingDays(): number {
+    return this.config.upcoming_days || 0;
   }
 
   get debug(): boolean {
@@ -83,7 +83,7 @@ export class DatetimeCard extends LitElement {
           <div class="list">
             ${this.entities.map(entity => {
               const state = calculateDatetimeState(this.hass, entity);
-              const shouldShow = !this.filterOverdue || isExpired(state);
+              const shouldShow = this.upcomingDays === 0 || state.daysUntilNextEvent <= this.upcomingDays;
 
               if (!shouldShow) return '';
 

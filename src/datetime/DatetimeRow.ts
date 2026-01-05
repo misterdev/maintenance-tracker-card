@@ -12,7 +12,8 @@ export class DatetimeRow extends LitElement {
 
   @state() private dialogOpen = false;
   @state() private selectedDate = '';
-  @state() private showAdvanced = false;
+  @state() private selectedOption: 'today' | 'yesterday' | 'custom' = 'today';
+  @state() private showDatePicker = false;
 
   get state(): IDatetimeState {
     return calculateDatetimeState(this.hass, this.entity);
@@ -23,6 +24,11 @@ export class DatetimeRow extends LitElement {
     return this.entity.icon ||
            this.hass?.states?.[this.entity?.id]?.attributes?.icon ||
            'mdi:calendar';
+  }
+
+  get iconColor(): string {
+    // Use custom icon color if provided, otherwise default to current text color
+    return this.entity.icon_color || 'var(--primary-text-color)';
   }
 
   get name(): string {
@@ -59,11 +65,12 @@ export class DatetimeRow extends LitElement {
     if (this.state.isOverdue) {
       // For overdue, show the date without "Overdue by X days" (that's in the badge)
       return showNextDate ? `Due ${nextDate}` : 'Overdue';
+    } else if (daysUntil === 0) {
+      // Due today
+      return showNextDate ? `Due ${nextDate}` : 'Due Today';
     } else {
       // Simple format: "Due in 5d" or "Due Apr 5 (in 5d)"
-      const untilText = daysUntil === 0 ? 'Today' :
-                        daysUntil === 1 ? '1d' :
-                        `${daysUntil}d`;
+      const untilText = daysUntil === 1 ? '1d' : `${daysUntil}d`;
 
       if (showNextDate) {
         return `Due ${nextDate} (in ${untilText})`;
@@ -73,30 +80,76 @@ export class DatetimeRow extends LitElement {
     }
   }
 
-  get overdueBadge(): string {
-    if (!this.state.isOverdue) return '';
-    const overdueDays = Math.abs(this.state.daysUntilNextEvent);
-    return overdueDays === 1 ? '1d' : `${overdueDays}d`;
+  get badge(): { text: string; color: string } | null {
+    const daysUntil = this.state.daysUntilNextEvent;
+
+    if (this.state.isOverdue) {
+      // Overdue - red badge with "ago"
+      const overdueDays = Math.abs(daysUntil);
+      return {
+        text: overdueDays === 1 ? '1d ago' : `${overdueDays}d ago`,
+        color: 'rgb(var(--rgb-warning, 223, 76, 30))'
+      };
+    } else if (daysUntil === 0) {
+      // Due today - green badge
+      return {
+        text: 'due today',
+        color: 'rgb(var(--rgb-success, 13, 160, 53))'
+      };
+    } else if (daysUntil === 1 || daysUntil === 2) {
+      // Due in 1-2 days - yellow/orange badge
+      return {
+        text: daysUntil === 1 ? 'due in 1d' : 'due in 2d',
+        color: 'rgb(var(--rgb-info, 255, 152, 0))'
+      };
+    }
+
+    return null;
   }
 
   private handleClick(): void {
-    // Format current last event date as YYYY-MM-DD
-    const lastDate = this.state.lastEventDate;
-    const year = lastDate.getFullYear();
-    const month = String(lastDate.getMonth() + 1).padStart(2, '0');
-    const day = String(lastDate.getDate()).padStart(2, '0');
+    // Set date to today by default
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
     this.selectedDate = `${year}-${month}-${day}`;
+    this.selectedOption = 'today';
+    this.showDatePicker = false;
 
     this.dialogOpen = true;
   }
 
   private closeDialog(): void {
     this.dialogOpen = false;
-    this.showAdvanced = false;
+    this.showDatePicker = false;
+    this.selectedOption = 'today';
   }
 
-  private toggleAdvanced(): void {
-    this.showAdvanced = !this.showAdvanced;
+  private setToday(): void {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    this.selectedDate = `${year}-${month}-${day}`;
+    this.selectedOption = 'today';
+    this.showDatePicker = false;
+  }
+
+  private setYesterday(): void {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const year = yesterday.getFullYear();
+    const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const day = String(yesterday.getDate()).padStart(2, '0');
+    this.selectedDate = `${year}-${month}-${day}`;
+    this.selectedOption = 'yesterday';
+    this.showDatePicker = false;
+  }
+
+  private showCustomDate(): void {
+    this.selectedOption = 'custom';
+    this.showDatePicker = true;
   }
 
   private handleDateChange(event: Event): void {
@@ -104,7 +157,7 @@ export class DatetimeRow extends LitElement {
     this.selectedDate = input.value;
   }
 
-  private submitDate(): void {
+  private confirmDate(): void {
     if (!this.selectedDate) return;
 
     // Parse date string as local time (YYYY-MM-DD format from input type="date")
@@ -113,14 +166,7 @@ export class DatetimeRow extends LitElement {
 
     // Skip confirmation since user already confirmed in our dialog
     resetDate(this.entity, selectedDateObj, this.hass, true);
-    this.dialogOpen = false;
-  }
-
-  private markAsDone(): void {
-    // Set date to today
-    const today = new Date();
-    resetDate(this.entity, today, this.hass, true);
-    this.dialogOpen = false;
+    this.closeDialog();
   }
 
   render() {
@@ -131,7 +177,7 @@ export class DatetimeRow extends LitElement {
         <ha-icon
           class="icon"
           .icon=${this.icon}
-          style="color: ${this.barColor}"
+          style="color: ${this.iconColor}"
           title="click to edit date">
         </ha-icon>
 
@@ -148,8 +194,8 @@ export class DatetimeRow extends LitElement {
           ` : ''}
         </div>
 
-        ${this.overdueBadge ? html`
-          <span class="overdue-badge">${this.overdueBadge}</span>
+        ${this.badge ? html`
+          <span class="badge" style="background: ${this.badge.color}">${this.badge.text}</span>
         ` : ''}
 
         <ha-icon
@@ -162,46 +208,51 @@ export class DatetimeRow extends LitElement {
         <div class="dialog-backdrop" @click=${this.closeDialog}>
           <div class="dialog" @click=${(e: Event) => e.stopPropagation()}>
             <div class="dialog-header">
-              <div class="dialog-title">
-                <ha-icon .icon=${this.icon} class="dialog-icon"></ha-icon>
-                <div>
-                  <div class="dialog-entity-name">${this.name}</div>
-                  <div class="dialog-subtitle">Last completed: ${formatDateShort(this.state.lastEventDate)}</div>
-                </div>
+              <ha-icon .icon=${this.icon} class="dialog-icon" style="color: ${this.iconColor}"></ha-icon>
+              <div class="dialog-title-text">
+                <div class="dialog-entity-name">${this.name}</div>
+                <div class="dialog-subtitle">Last completed: ${formatDateShort(this.state.lastEventDate)}</div>
               </div>
-              <button class="quick-done-button" @click=${this.markAsDone} title="Mark as done today">
-                <ha-icon icon="mdi:check-circle"></ha-icon>
-                <span>Done</span>
-              </button>
             </div>
 
             <div class="dialog-body">
-              <button class="advanced-toggle" @click=${this.toggleAdvanced}>
-                <ha-icon icon="mdi:${this.showAdvanced ? 'chevron-up' : 'chevron-down'}"></ha-icon>
-                <span>Advanced: Select custom date</span>
+              <label class="date-label">Completion date</label>
+
+              <div class="quick-actions">
+                <button
+                  class="quick-action-button ${this.selectedOption === 'yesterday' ? 'selected' : ''}"
+                  @click=${this.setYesterday}>
+                  <ha-icon icon="mdi:calendar-minus"></ha-icon>
+                  <span>Yesterday</span>
+                </button>
+                <button
+                  class="quick-action-button ${this.selectedOption === 'today' ? 'selected' : ''}"
+                  @click=${this.setToday}>
+                  <ha-icon icon="mdi:calendar-today"></ha-icon>
+                  <span>Today</span>
+                </button>
+              </div>
+
+              <button class="custom-date-button ${this.selectedOption === 'custom' ? 'selected' : ''}" @click=${this.showCustomDate}>
+                <ha-icon icon="mdi:calendar-edit"></ha-icon>
+                <span>Custom date</span>
+                <ha-icon icon="mdi:chevron-${this.showDatePicker ? 'up' : 'down'}" class="chevron-icon"></ha-icon>
               </button>
 
-              ${this.showAdvanced ? html`
-                <div class="advanced-content">
-                  <label class="date-label">Select completion date:</label>
-                  <input
-                    type="date"
-                    class="date-input"
-                    .value=${this.selectedDate}
-                    @input=${this.handleDateChange}
-                  />
-                  <button class="primary-button full-width" @click=${this.submitDate}>
-                    Save Custom Date
-                  </button>
-                </div>
+              ${this.showDatePicker ? html`
+                <input
+                  type="date"
+                  class="date-input"
+                  .value=${this.selectedDate}
+                  @input=${this.handleDateChange}
+                />
               ` : ''}
             </div>
 
-            ${!this.showAdvanced ? html`
-              <div class="dialog-actions">
-                <button class="secondary-button" @click=${this.closeDialog}>Cancel</button>
-              </div>
-            ` : ''}
+            <div class="dialog-actions">
+              <button class="secondary-button" @click=${this.closeDialog}>Cancel</button>
+              <button class="primary-button" @click=${this.confirmDate}>Confirm</button>
+            </div>
           </div>
         </div>
       ` : ''}
@@ -245,11 +296,10 @@ export class DatetimeRow extends LitElement {
       white-space: nowrap;
     }
 
-    .overdue-badge {
+    .badge {
       display: flex;
       align-items: center;
       padding: 4px 8px;
-      background: rgb(var(--rgb-warning, 223, 76, 30));
       color: white;
       font-size: 12px;
       font-weight: 600;
@@ -317,93 +367,141 @@ export class DatetimeRow extends LitElement {
 
     .dialog-header {
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      padding: 20px;
-      border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
-    }
-
-    .dialog-title {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
-      flex: 1;
+      gap: 16px;
+      align-items: center;
+      padding: 20px 20px 16px 20px;
     }
 
     .dialog-icon {
       flex-shrink: 0;
-      --mdc-icon-size: 24px;
-      color: var(--primary-color);
+      --mdc-icon-size: 32px;
+    }
+
+    .dialog-title-text {
+      flex: 1;
+      min-width: 0;
     }
 
     .dialog-entity-name {
-      font-size: 16px;
-      font-weight: 500;
+      font-size: 18px;
+      font-weight: 600;
       color: var(--primary-text-color);
       margin-bottom: 4px;
+      line-height: 1.3;
     }
 
     .dialog-subtitle {
       font-size: 13px;
       color: var(--secondary-text-color);
-    }
-
-    .quick-done-button {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
-      border: none;
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: var(--primary-color);
-      color: var(--text-primary-color, white);
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 180ms ease-in-out;
-      white-space: nowrap;
-    }
-
-    .quick-done-button:hover {
-      opacity: 0.9;
-      transform: scale(1.02);
-    }
-
-    .quick-done-button ha-icon {
-      --mdc-icon-size: 18px;
+      line-height: 1.4;
     }
 
     .dialog-body {
-      padding: 12px 20px;
+      padding: 0 20px 16px 20px;
     }
 
-    .advanced-toggle {
+    .date-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .quick-action-button {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 12px;
+      border: 2px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+      border-radius: var(--ha-card-border-radius, 12px);
+      background: transparent;
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 180ms ease-in-out;
+    }
+
+    .quick-action-button:hover {
+      border-color: var(--primary-color);
+      background: rgba(var(--rgb-primary-color, 13, 160, 53), 0.08);
+    }
+
+    .quick-action-button.selected {
+      border-color: var(--primary-color);
+      background: var(--primary-color);
+      color: var(--text-primary-color, white);
+    }
+
+    .quick-action-button ha-icon {
+      --mdc-icon-size: 20px;
+    }
+
+    .custom-date-button {
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px;
-      border: none;
+      gap: 8px;
+      padding: 12px;
+      border: 2px solid var(--divider-color, rgba(255, 255, 255, 0.1));
       border-radius: var(--ha-card-border-radius, 12px);
       background: transparent;
-      color: var(--secondary-text-color);
+      color: var(--primary-text-color);
       font-size: 13px;
+      font-weight: 500;
       cursor: pointer;
       transition: all 180ms ease-in-out;
+      margin-bottom: 12px;
+    }
+
+    .custom-date-button:hover {
+      border-color: var(--primary-color);
+      background: rgba(var(--rgb-primary-color, 13, 160, 53), 0.08);
+    }
+
+    .custom-date-button.selected {
+      border-color: var(--primary-color);
+      background: var(--primary-color);
+      color: var(--text-primary-color, white);
+    }
+
+    .custom-date-button ha-icon:first-child {
+      --mdc-icon-size: 18px;
+    }
+
+    .custom-date-button .chevron-icon {
+      --mdc-icon-size: 16px;
+      margin-left: auto;
+    }
+
+    .custom-date-button span {
+      flex: 1;
       text-align: left;
     }
 
-    .advanced-toggle:hover {
-      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.04);
+    .date-input {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      border: 2px solid var(--divider-color, #ccc);
+      border-radius: var(--ha-card-border-radius, 12px);
+      background: var(--card-background-color, #fff);
       color: var(--primary-text-color);
-    }
-
-    .advanced-toggle ha-icon {
-      --mdc-icon-size: 16px;
-    }
-
-    .advanced-content {
-      margin-top: 12px;
+      cursor: pointer;
+      transition: border-color 180ms ease-in-out;
+      box-sizing: border-box;
+      margin-bottom: 0;
       animation: slideDown 180ms ease-in-out;
     }
 
@@ -418,28 +516,6 @@ export class DatetimeRow extends LitElement {
       }
     }
 
-    .date-label {
-      display: block;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--secondary-text-color);
-      margin-bottom: 8px;
-    }
-
-    .date-input {
-      width: 100%;
-      padding: 12px;
-      font-size: 15px;
-      border: 2px solid var(--divider-color, #ccc);
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: var(--card-background-color, #fff);
-      color: var(--primary-text-color);
-      cursor: pointer;
-      transition: border-color 180ms ease-in-out;
-      box-sizing: border-box;
-      margin-bottom: 12px;
-    }
-
     .date-input:focus {
       outline: none;
       border-color: var(--primary-color);
@@ -448,13 +524,14 @@ export class DatetimeRow extends LitElement {
     .dialog-actions {
       display: flex;
       gap: 8px;
-      padding: 12px 20px 20px 20px;
-      justify-content: flex-end;
+      padding: 16px 20px 20px 20px;
+      border-top: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
     }
 
     .primary-button,
     .secondary-button {
-      padding: 10px 20px;
+      flex: 1;
+      padding: 12px 20px;
       border: none;
       border-radius: var(--ha-card-border-radius, 12px);
       font-size: 14px;
@@ -465,11 +542,13 @@ export class DatetimeRow extends LitElement {
 
     .secondary-button {
       background: transparent;
-      color: var(--primary-text-color);
+      color: var(--secondary-text-color);
+      border: 2px solid var(--divider-color, rgba(255, 255, 255, 0.1));
     }
 
     .secondary-button:hover {
-      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.08);
+      background: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.04);
+      color: var(--primary-text-color);
     }
 
     .primary-button {
@@ -479,11 +558,6 @@ export class DatetimeRow extends LitElement {
 
     .primary-button:hover {
       opacity: 0.9;
-      transform: scale(1.02);
-    }
-
-    .full-width {
-      width: 100%;
     }
   `;
 }
