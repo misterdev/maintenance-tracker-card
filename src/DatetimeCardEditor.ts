@@ -1,4 +1,4 @@
-import { LitElement, html, css, PropertyValues } from 'lit';
+import { LitElement, html, css  } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type { IAutocompleteItem, IConfig, IEntity, IHass } from './types';
@@ -23,21 +23,23 @@ export class DatetimeCardEditor extends LitElement {
   @state() private title = '';
   @state() private debug = false;
 
+  private hasInitialized = false;
+
   // Home Assistant interface method
   setConfig(config: IConfig): void {
     this.config = config;
+
+    // Only initialize from config once, on first load
+    if (!this.hasInitialized) {
+      this.initializeFromConfig();
+      this.hasInitialized = true;
+    }
   }
 
   get autocompleteItems(): IAutocompleteItem[] {
     return Object.keys(this.hass?.states || {})
       .filter((entity_id) => entity_id.startsWith("input_datetime"))
       .map((entity_id) => this.toAutocompleteItem(entity_id));
-  }
-
-  updated(changedProperties: PropertyValues) {
-    if (changedProperties.has('config')) {
-      this.initializeFromConfig();
-    }
   }
 
   private initializeFromConfig(): void {
@@ -90,20 +92,22 @@ export class DatetimeCardEditor extends LitElement {
     return { primaryText, secondaryText, value: entity_id };
   }
 
-  private toDraggableEntity({ friendly_name, id, frequency_days }: IEntity): DraggableEntity {
+  private toDraggableEntity({ friendly_name, id, frequency_days, icon }: IEntity): DraggableEntity {
     return {
       friendly_name,
       id,
       key: this.newKey(),
       frequency_days: frequency_days > 0 ? frequency_days.toString() : "",
+      icon: icon || "",
     };
   }
 
-  private toEntity({ friendly_name, id, frequency_days }: DraggableEntity): IEntity {
+  private toEntity({ friendly_name, id, frequency_days, icon }: DraggableEntity): IEntity {
     return {
       friendly_name,
       id,
       frequency_days: parseInt(frequency_days) || 7,
+      icon: icon || undefined,
     };
   }
 
@@ -130,6 +134,14 @@ export class DatetimeCardEditor extends LitElement {
     const friendly_name = event.target.value;
     this.draggableEntities = this.draggableEntities.map((e) =>
       e === entity ? { ...e, friendly_name } : e,
+    );
+    this.dispatchConfigChanged();
+  }
+
+  private updateIcon(event: InputEvent, entity: DraggableEntity): void {
+    const icon = event.target.value;
+    this.draggableEntities = this.draggableEntities.map((e) =>
+      e === entity ? { ...e, icon } : e,
     );
     this.dispatchConfigChanged();
   }
@@ -272,11 +284,18 @@ export class DatetimeCardEditor extends LitElement {
 
               <ha-textfield
                 data-testid="friendly-name-${index}"
-                label="Friendly name"
+                label="Friendly name (optional)"
                 .value=${entity.friendly_name || ""}
                 @input=${(event: Event) => this.updateFriendlyName(event as InputEvent, entity)}>
               </ha-textfield>
-              <div></div>
+
+              <ha-textfield
+                data-testid="icon-${index}"
+                label="Icon (optional, e.g. mdi:sprout)"
+                .value=${entity.icon || ""}
+                @input=${(event: Event) => this.updateIcon(event as InputEvent, entity)}>
+              </ha-textfield>
+
               <div></div>
             </div>
           `

@@ -11,13 +11,17 @@ export class DatetimeRow extends LitElement {
 
   @state() private dialogOpen = false;
   @state() private selectedDate = '';
+  @state() private showAdvanced = false;
 
   get state(): IDatetimeState {
     return calculateDatetimeState(this.hass, this.entity);
   }
 
   get icon(): string {
-    return this.hass?.states?.[this.entity?.id]?.attributes?.icon || 'mdi:calendar';
+    // Use custom icon if provided, otherwise fall back to entity's icon or default
+    return this.entity.icon ||
+           this.hass?.states?.[this.entity?.id]?.attributes?.icon ||
+           'mdi:calendar';
   }
 
   get name(): string {
@@ -76,6 +80,11 @@ export class DatetimeRow extends LitElement {
 
   private closeDialog(): void {
     this.dialogOpen = false;
+    this.showAdvanced = false;
+  }
+
+  private toggleAdvanced(): void {
+    this.showAdvanced = !this.showAdvanced;
   }
 
   private handleDateChange(event: Event): void {
@@ -140,21 +149,47 @@ export class DatetimeRow extends LitElement {
       ${this.dialogOpen ? html`
         <div class="dialog-backdrop" @click=${this.closeDialog}>
           <div class="dialog" @click=${(e: Event) => e.stopPropagation()}>
-            <h2>Edit Last Event Date</h2>
-            <p class="dialog-entity-name">${this.name}</p>
-
-            <input
-              type="date"
-              class="date-input"
-              .value=${this.selectedDate}
-              @input=${this.handleDateChange}
-            />
-
-            <div class="dialog-actions">
-              <button class="cancel-button" @click=${this.closeDialog}>Cancel</button>
-              <button class="done-button" @click=${this.markAsDone}>Mark as Done</button>
-              <button class="submit-button" @click=${this.submitDate}>Save</button>
+            <div class="dialog-header">
+              <div class="dialog-title">
+                <ha-icon .icon=${this.icon} class="dialog-icon"></ha-icon>
+                <div>
+                  <div class="dialog-entity-name">${this.name}</div>
+                  <div class="dialog-subtitle">Last completed: ${formatDateShort(this.state.lastEventDate)}</div>
+                </div>
+              </div>
+              <button class="quick-done-button" @click=${this.markAsDone} title="Mark as done today">
+                <ha-icon icon="mdi:check-circle"></ha-icon>
+                <span>Done</span>
+              </button>
             </div>
+
+            <div class="dialog-body">
+              <button class="advanced-toggle" @click=${this.toggleAdvanced}>
+                <ha-icon icon="mdi:${this.showAdvanced ? 'chevron-up' : 'chevron-down'}"></ha-icon>
+                <span>Advanced: Select custom date</span>
+              </button>
+
+              ${this.showAdvanced ? html`
+                <div class="advanced-content">
+                  <label class="date-label">Select completion date:</label>
+                  <input
+                    type="date"
+                    class="date-input"
+                    .value=${this.selectedDate}
+                    @input=${this.handleDateChange}
+                  />
+                  <button class="primary-button full-width" @click=${this.submitDate}>
+                    Save Custom Date
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+
+            ${!this.showAdvanced ? html`
+              <div class="dialog-actions">
+                <button class="secondary-button" @click=${this.closeDialog}>Cancel</button>
+              </div>
+            ` : ''}
           </div>
         </div>
       ` : ''}
@@ -237,88 +272,203 @@ export class DatetimeRow extends LitElement {
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.6);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .dialog {
       background: var(--card-background-color, #fff);
-      border-radius: 8px;
-      padding: 24px;
-      min-width: 300px;
+      border-radius: 12px;
+      min-width: 320px;
       max-width: 400px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      overflow: hidden;
+      animation: slideUp 0.2s ease;
     }
 
-    .dialog h2 {
-      margin: 0 0 8px 0;
-      font-size: 18px;
-      font-weight: 500;
-      color: var(--primary-text-color);
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .dialog-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 20px 20px 16px 20px;
+      border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.1));
+    }
+
+    .dialog-title {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      flex: 1;
+    }
+
+    .dialog-icon {
+      flex-shrink: 0;
+      --mdc-icon-size: 24px;
+      color: var(--primary-color, #0da035);
     }
 
     .dialog-entity-name {
-      margin: 0 0 16px 0;
-      font-size: 14px;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      margin-bottom: 4px;
+    }
+
+    .dialog-subtitle {
+      font-size: 13px;
       color: var(--secondary-text-color);
+    }
+
+    .quick-done-button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      background: var(--primary-color, #0da035);
+      color: white;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .quick-done-button:hover {
+      background: var(--primary-color-dark, #0b8a2d);
+      transform: scale(1.02);
+    }
+
+    .quick-done-button ha-icon {
+      --mdc-icon-size: 18px;
+    }
+
+    .dialog-body {
+      padding: 8px 20px 12px 20px;
+    }
+
+    .advanced-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 8px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+    }
+
+    .advanced-toggle:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--primary-text-color);
+    }
+
+    .advanced-toggle ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .advanced-content {
+      margin-top: 12px;
+      animation: slideDown 0.2s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .date-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--secondary-text-color);
+      margin-bottom: 8px;
     }
 
     .date-input {
       width: 100%;
-      padding: 8px;
-      font-size: 14px;
-      border: 1px solid var(--divider-color, #ccc);
-      border-radius: 4px;
-      margin-bottom: 16px;
+      padding: 12px;
+      font-size: 15px;
+      border: 2px solid var(--divider-color, #ccc);
+      border-radius: 8px;
       background: var(--card-background-color, #fff);
       color: var(--primary-text-color);
+      cursor: pointer;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+    }
+
+    .date-input:focus {
+      outline: none;
+      border-color: var(--primary-color, #0da035);
     }
 
     .dialog-actions {
       display: flex;
       gap: 8px;
+      padding: 8px 20px 16px 20px;
       justify-content: flex-end;
     }
 
-    .cancel-button,
-    .done-button,
-    .submit-button {
-      padding: 8px 16px;
+    .primary-button,
+    .secondary-button {
+      padding: 10px 20px;
       border: none;
-      border-radius: 4px;
+      border-radius: 8px;
       font-size: 14px;
+      font-weight: 500;
       cursor: pointer;
-      transition: background-color 0.2s;
+      transition: all 0.2s;
     }
 
-    .cancel-button {
+    .secondary-button {
       background: transparent;
       color: var(--primary-text-color);
     }
 
-    .cancel-button:hover {
+    .secondary-button:hover {
       background: rgba(255, 255, 255, 0.1);
     }
 
-    .done-button {
+    .primary-button {
       background: var(--primary-color, #0da035);
       color: white;
     }
 
-    .done-button:hover {
+    .primary-button:hover {
       background: var(--primary-color-dark, #0b8a2d);
+      transform: scale(1.02);
     }
 
-    .submit-button {
-      background: var(--secondary-background-color, #333);
-      color: var(--primary-text-color);
-    }
-
-    .submit-button:hover {
-      background: var(--divider-color, #444);
+    .full-width {
+      width: 100%;
     }
   `;
 }

@@ -27,6 +27,7 @@ export interface IEntity {
   friendly_name?: string;
   id: string;
   frequency_days: number;
+  icon?: string;
 }
 
 export interface IHass {
