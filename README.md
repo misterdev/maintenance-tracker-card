@@ -4,13 +4,13 @@ A Home Assistant Lovelace card for tracking recurring maintenance tasks. Perfect
 
 This card helps you stay on top of routine tasks by showing how many days have passed since the last action or counting down to the next scheduled maintenance.
 
-![maintenance tracker](https://raw.githubusercontent.com/misterdev/datetime-card/main/images/chinese_money.png "Maintenance Tracker")
+![maintenance tracker](https://raw.githubusercontent.com/misterdev/maintenance-tracker-card/main/images/chinese_money.png "Maintenance Tracker")
 
 ## Installation
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
-Or you can download [maintenance-tracker-card.js](https://github.com/misterdev/datetime-card/releases/latest) to your `configuration/www` folder and add it as a resource:
+Or you can download [maintenance-tracker-card.js](https://github.com/misterdev/maintenance-tracker-card/releases/latest) to your `configuration/www` folder and add it as a resource:
 
 1. Copy `maintenance-tracker-card.js` to `/config/www/` directory
 2. Go to **Settings → Dashboards → Resources** tab
@@ -28,7 +28,7 @@ Or you can download [maintenance-tracker-card.js](https://github.com/misterdev/d
 - Click on the card preview
 - Use the visual or the code editor to configure your card, as below
 
-![configuration](https://raw.githubusercontent.com/misterdev/datetime-card/main/images/configuration.png "Configuration")
+![configuration](https://raw.githubusercontent.com/misterdev/maintenance-tracker-card/main/images/configuration.png "Configuration")
 
 ```yaml
 type: custom:maintenance-tracker-card

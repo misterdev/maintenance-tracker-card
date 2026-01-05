@@ -23,7 +23,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/misterdev/datetime-card.git"
+    "url": "https://github.com/misterdev/maintenance-tracker-card.git"
   },
   "type": "module"
 }

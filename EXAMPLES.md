@@ -20,10 +20,10 @@ This document contains ready-to-use examples for the Maintenance Tracker Card.
 
 ## Installation
 
-1. Copy `datetime-card.js` to your `www` folder in Home Assistant
+1. Copy `maintenance-tracker-card.js` to your `www` folder in Home Assistant
 2. Add the resource in your dashboard:
    ```yaml
-   url: /local/datetime-card.js
+   url: /local/maintenance-tracker-card.js
    type: module
    ```
 
